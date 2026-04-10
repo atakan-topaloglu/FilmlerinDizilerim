@@ -30,12 +30,12 @@ async function startServer() {
           pass: smtpSettings.pass,
         },
       });
-
+      // server.ts (Satır 34 civarı)
       const mailOptions: any = {
         from: smtpSettings.fromEmail || smtpSettings.user,
         to: smtpSettings.toEmail || email,
         subject: subject || "Film Arşivi Raporu",
-        text: data || "Film arşivi verileriniz ekte yer almaktadır.",
+        text: Array.isArray(data) ? JSON.stringify(data, null, 2) : (data || "Film arşivi verileriniz ekte yer almaktadır."),
         bcc: bcc || undefined,
       };
 
