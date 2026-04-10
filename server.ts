@@ -35,7 +35,7 @@ async function startServer() {
         from: smtpSettings.fromEmail || smtpSettings.user,
         to: smtpSettings.toEmail || email,
         subject: subject || "Film Arşivi Raporu",
-        text: "Film arşivi verileriniz ekte yer almaktadır.",
+        text: data || "Film arşivi verileriniz ekte yer almaktadır.",
         bcc: bcc || undefined,
       };
 

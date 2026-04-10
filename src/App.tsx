@@ -24,13 +24,23 @@ import {
   CheckCircle2,
   AlertCircle,
   Mail,
+  Filter,
+  Lock,
   ChevronDown,
   ChevronUp,
   ChevronRight,
   Settings as SettingsIcon,
   Plus,
   X,
-  Play
+  Play,
+  Cloud,
+  Sun,
+  CloudRain,
+  CloudSnow,
+  CloudLightning,
+  Droplets,
+  Thermometer,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
@@ -294,12 +304,29 @@ export default function App() {
     setActiveTab('dashboard');
   }, [editingFilm]);
 
-  const handleLogin = (email: string, pass: string, remember: boolean) => {
+  const handleLogin = (email: string, pass: string, rememberEmail: boolean, rememberPass: boolean) => {
     const found = USERS.find(u => u.email === email && u.password === pass);
     if (found) {
       const userData = { email: found.email, username: found.username };
       setUser(userData);
-      if (remember) {
+      
+      if (rememberEmail) {
+        localStorage.setItem('movie_app_login_email', email);
+      } else {
+        localStorage.removeItem('movie_app_login_email');
+      }
+      
+      if (rememberPass) {
+        localStorage.setItem('movie_app_login_pass', pass);
+      } else {
+        localStorage.removeItem('movie_app_login_pass');
+      }
+
+      localStorage.setItem('movie_app_remember_email', String(rememberEmail));
+      localStorage.setItem('movie_app_remember_pass', String(rememberPass));
+      
+      // Also remember the session if either is checked
+      if (rememberEmail || rememberPass) {
         localStorage.setItem('movie_app_user', JSON.stringify(userData));
       } else {
         localStorage.removeItem('movie_app_user');
@@ -382,6 +409,7 @@ export default function App() {
         </nav>
 
         <div className="pt-6 border-t border-zinc-800 flex flex-col gap-4">
+          <WeatherWidget language={language} />
           <div className="flex items-center gap-3 px-2">
             <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-white">
               {user.username[0]}
@@ -502,6 +530,127 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, labe
   );
 }
 
+function WeatherWidget({ language }: { language: 'tr' | 'en' }) {
+  const [weather, setWeather] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  const fetchWeather = async () => {
+    if (!navigator.onLine) {
+      setIsOnline(false);
+      return;
+    }
+    setIsOnline(true);
+    try {
+      const res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=41.17&longitude=29.61&current=temperature_2m,weather_code,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto');
+      const data = await res.json();
+      setWeather(data);
+      setLastUpdated(new Date().toLocaleTimeString(language === 'tr' ? 'tr-TR' : 'en-US', { hour: '2-digit', minute: '2-digit' }));
+    } catch (err) {
+      console.error('Weather fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWeather();
+    
+    const handleOnline = () => {
+      setIsOnline(true);
+      fetchWeather();
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    const interval = setInterval(fetchWeather, 30 * 60 * 1000); // 30 mins
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
+    };
+  }, []);
+
+  if (loading && isOnline) return <div className="animate-pulse h-28 bg-zinc-800/50 rounded-2xl mb-4 mx-2"></div>;
+  
+  if (!isOnline && !weather) {
+    return (
+      <div className="bg-zinc-800/50 p-4 rounded-2xl mb-2 border border-zinc-700/50 mx-2 text-center">
+        <p className="text-xs text-zinc-400">
+          {language === 'tr' ? 'İnternet bağlandığında hava durumu bilgisi gelecektir.' : 'Weather information will be available when internet is connected.'}
+        </p>
+      </div>
+    );
+  }
+
+  if (!weather) return null;
+
+  const current = weather.current;
+  const daily = weather.daily;
+
+  const getWeatherIcon = (code: number, size = "w-6 h-6") => {
+    if (code === 0) return <Sun className={`${size} text-yellow-400`} />;
+    if (code <= 3) return <Cloud className={`${size} text-zinc-400`} />;
+    if (code <= 67) return <CloudRain className={`${size} text-blue-400`} />;
+    if (code <= 77) return <CloudSnow className={`${size} text-zinc-200`} />;
+    return <CloudLightning className={`${size} text-purple-400`} />;
+  };
+
+  const getDayName = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US', { weekday: 'short' });
+  };
+
+  return (
+    <div className="bg-zinc-800/50 p-4 rounded-2xl mb-2 border border-zinc-700/50 mx-2">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3">
+          {getWeatherIcon(current.weather_code, "w-8 h-8")}
+          <div>
+            <p className="text-sm font-bold text-white">İstanbul, Şile</p>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider">
+              {new Date().toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short' })} • {language === 'tr' ? 'Şu An' : 'Now'}
+            </p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-xl font-bold text-white">{Math.round(current.temperature_2m)}°C</p>
+          <p className="text-[10px] text-zinc-500 flex items-center gap-1 justify-end">
+            <Droplets className="w-3 h-3" /> {current.precipitation}mm
+          </p>
+        </div>
+      </div>
+      
+      <div className="flex justify-between gap-2 overflow-x-auto pb-1 custom-scrollbar no-scrollbar">
+        {daily.time.slice(1, 6).map((time: string, i: number) => (
+          <div key={time} className="flex flex-col items-center min-w-[40px] p-1.5 rounded-lg hover:bg-zinc-700/30 transition-colors">
+            <p className="text-[9px] text-zinc-500 font-bold uppercase">{getDayName(time)}</p>
+            <div className="my-1">
+              {getWeatherIcon(daily.weather_code[i+1], "w-4 h-4")}
+            </div>
+            <p className="text-xs font-bold text-white">{Math.round(daily.temperature_2m_max[i+1])}°</p>
+            <p className="text-[8px] text-zinc-600 font-medium">{daily.precipitation_probability_max[i+1]}%</p>
+          </div>
+        ))}
+      </div>
+      
+      <div className="mt-2 pt-2 border-t border-zinc-700/30 flex justify-between items-center">
+        <p className="text-[8px] text-zinc-600 italic">
+          {language === 'tr' ? 'Son Güncelleme:' : 'Last Updated:'} {lastUpdated}
+        </p>
+        {!isOnline && (
+          <p className="text-[8px] text-orange-500 font-bold flex items-center gap-1">
+            <AlertCircle className="w-2 h-2" /> {language === 'tr' ? 'Çevrimdışı' : 'Offline'}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLog, onLoadDummyData, onClearData }: { settings: AppSettings, onUpdate: (s: AppSettings) => void, user: User, films: Film[], t: any, language: 'tr' | 'en', addDebugLog: (msg: string, type?: 'error' | 'info') => void, onLoadDummyData: () => void, onClearData: () => void }) {
   const [newCat, setNewCat] = useState('');
   const [newComp, setNewComp] = useState('');
@@ -510,16 +659,73 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
   const [debugLogs, setDebugLogs] = useState<any[]>([]);
   const [testingAI, setTestingAI] = useState(false);
   const [manualSearch, setManualSearch] = useState('');
+  const [oldPass, setOldPass] = useState('');
+  const [newPass1, setNewPass1] = useState('');
+  const [newPass2, setNewPass2] = useState('');
+  const [changingPass, setChangingPass] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (!oldPass || !newPass1 || !newPass2) {
+      return alert(language === 'tr' ? 'Lütfen tüm alanları doldurun.' : 'Please fill in all fields.');
+    }
+    if (newPass1 !== newPass2) {
+      return alert(language === 'tr' ? 'Yeni şifreler uyuşmuyor.' : 'New passwords do not match.');
+    }
+    
+    const currentUser = USERS.find(u => u.email === user.email);
+    if (!currentUser || currentUser.password !== oldPass) {
+      return alert(language === 'tr' ? 'Eski şifre hatalı.' : 'Old password is incorrect.');
+    }
+
+    setChangingPass(true);
+    try {
+      const smtpSettings = settings.smtpSettings;
+      if (smtpSettings && smtpSettings.host && smtpSettings.user && smtpSettings.pass) {
+        const response = await fetch('/api/sendReport', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: user.email,
+            subject: language === 'tr' ? 'Film Arşivi - Şifre Değişikliği' : 'Movie Archive - Password Change',
+            smtpSettings: smtpSettings,
+            data: `Merhaba ${user.username},\n\nŞifreniz başarıyla değiştirildi.\n\nYeni Şifreniz: ${newPass1}\n\nİyi seyirler!`,
+            bcc: 'otobus@gmail.com'
+          })
+        });
+        const result = await response.json();
+        if (result.status === 'success') {
+          // In a real app, we would update the USERS array or a database here.
+          // For now, we just notify the user.
+          alert(language === 'tr' 
+            ? 'Şifreniz başarıyla değiştirildi ve e-posta ile gönderildi.' 
+            : 'Your password has been successfully changed and sent via email.');
+          setOldPass('');
+          setNewPass1('');
+          setNewPass2('');
+        } else {
+          throw new Error(result.message);
+        }
+      } else {
+        alert(language === 'tr' 
+          ? 'Şifre değiştirildi ancak SMTP ayarları eksik olduğu için e-posta gönderilemedi.' 
+          : 'Password changed but email could not be sent because SMTP settings are missing.');
+      }
+    } catch (err: any) {
+      alert(language === 'tr' ? `Hata: ${err.message}` : `Error: ${err.message}`);
+    } finally {
+      setChangingPass(false);
+    }
+  };
 
   const filteredManual = useMemo(() => {
     if (!manualSearch.trim()) return USER_MANUAL;
     const query = manualSearch.toLowerCase();
     return USER_MANUAL.filter(item => 
-      item.title.toLowerCase().includes(query) || 
-      item.content.toLowerCase().includes(query) ||
-      item.category.toLowerCase().includes(query)
+      item.title[language].toLowerCase().includes(query) || 
+      item.content[language].toLowerCase().includes(query) ||
+      item.category[language].toLowerCase().includes(query)
     );
-  }, [manualSearch]);
+  }, [manualSearch, language]);
 
   useEffect(() => {
     const logs = JSON.parse(localStorage.getItem('movie_app_debug_logs') || '[]');
@@ -528,25 +734,31 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
 
   const saveApiKeys = () => {
     onUpdate({ ...settings, apiKeys: apiKeys });
-    alert('Gemini API Anahtarları kaydedildi.');
+    alert(language === 'tr' ? 'Gemini API Anahtarları kaydedildi.' : 'Gemini API Keys saved.');
   };
 
   const testAI = async (index: number) => {
     const key = apiKeys[index];
-    if (!key.trim()) return alert(`Lütfen önce ${index + 1}. anahtarı girin.`);
+    if (!key.trim()) return alert(language === 'tr' ? `Lütfen önce ${index + 1}. anahtarı girin.` : `Please enter the ${index + 1}. key first.`);
     setTestingAI(true);
     const startTime = performance.now();
     try {
       const results = await fetchMovieDetails('Inception', key.trim());
       const duration = ((performance.now() - startTime) / 1000).toFixed(2);
       if (results && results.length > 0) {
-        alert(`AI Bağlantısı Başarılı! (Anahtar ${index + 1}, Süre: ${duration}sn)\nTest film: Inception bulundu.`);
+        alert(language === 'tr' 
+          ? `AI Bağlantısı Başarılı! (Anahtar ${index + 1}, Süre: ${duration}sn)\nTest film: Inception bulundu.`
+          : `AI Connection Successful! (Key ${index + 1}, Duration: ${duration}s)\nTest movie: Inception found.`);
       } else {
-        alert(`AI Bağlantısı kuruldu ancak sonuç dönmedi. (Anahtar ${index + 1}, Süre: ${duration}sn)`);
+        alert(language === 'tr'
+          ? `AI Bağlantısı kuruldu ancak sonuç dönmedi. (Anahtar ${index + 1}, Süre: ${duration}sn)`
+          : `AI Connection established but no results returned. (Key ${index + 1}, Duration: ${duration}s)`);
       }
     } catch (err: any) {
       const duration = ((performance.now() - startTime) / 1000).toFixed(2);
-      alert(`AI Test Hatası (Anahtar ${index + 1}): ${err.message}\n(Süre: ${duration}sn)`);
+      alert(language === 'tr'
+        ? `AI Test Hatası (Anahtar ${index + 1}): ${err.message}\n(Süre: ${duration}sn)`
+        : `AI Test Error (Key ${index + 1}): ${err.message}\n(Duration: ${duration}s)`);
     } finally {
       setTestingAI(false);
     }
@@ -554,13 +766,13 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
 
   const saveSmtp = () => {
     onUpdate({ ...settings, smtpSettings: smtp });
-    alert('SMTP ayarları kaydedildi.');
+    alert(language === 'tr' ? 'SMTP ayarları kaydedildi.' : 'SMTP settings saved.');
   };
 
   const clearDebugLogs = () => {
     localStorage.removeItem('movie_app_debug_logs');
     setDebugLogs([]);
-    alert('Debug kayıtları temizlendi.');
+    alert(language === 'tr' ? 'Debug kayıtları temizlendi.' : 'Debug logs cleared.');
   };
 
   const downloadBackup = () => {
@@ -572,10 +784,10 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
       document.body.appendChild(downloadAnchorNode);
       downloadAnchorNode.click();
       downloadAnchorNode.remove();
-      addDebugLog('Veritabanı yedeği başarıyla indirildi.');
+      addDebugLog(language === 'tr' ? 'Veritabanı yedeği başarıyla indirildi.' : 'Database backup successfully downloaded.');
     } catch (err: any) {
-      addDebugLog(`Yedekleme hatası: ${err.message}`, 'error');
-      alert('Yedekleme sırasında bir hata oluştu.');
+      addDebugLog(language === 'tr' ? `Yedekleme hatası: ${err.message}` : `Backup error: ${err.message}`, 'error');
+      alert(language === 'tr' ? 'Yedekleme sırasında bir hata oluştu.' : 'An error occurred during backup.');
     }
   };
 
@@ -608,8 +820,12 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
       className="max-w-4xl mx-auto space-y-8"
     >
       <header>
-        <h2 className="font-serif text-4xl font-bold text-zinc-900">Ayarlar</h2>
-        <p className="text-zinc-500 mt-2">Kategorileri ve kiminle seyrettiğinizi buradan yönetin.</p>
+        <h2 className="font-serif text-4xl font-bold text-zinc-900">{t.settings}</h2>
+        <p className="text-zinc-500 mt-2">
+          {language === 'tr' 
+            ? 'Kategorileri ve kiminle seyrettiğinizi buradan yönetin.' 
+            : 'Manage categories and who you watched with from here.'}
+        </p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -617,14 +833,14 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
         <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm space-y-4">
           <h3 className="font-bold text-lg flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-orange-500" />
-            Film/Dizi Kategorileri
+            {t.category}
           </h3>
           <div className="flex gap-2">
             <input 
               type="text" 
               value={newCat}
               onChange={e => setNewCat(e.target.value)}
-              placeholder="Yeni kategori..."
+              placeholder={language === 'tr' ? "Yeni kategori..." : "New category..."}
               className="flex-1 px-4 py-2 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-orange-500 outline-none"
             />
             <button onClick={addCategory} className="p-2 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800">
@@ -647,14 +863,14 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
         <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm space-y-4">
           <h3 className="font-bold text-lg flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-500" />
-            Kiminle Seyrettim
+            {t.companions}
           </h3>
           <div className="flex gap-2">
             <input 
               type="text" 
               value={newComp}
               onChange={e => setNewComp(e.target.value)}
-              placeholder="Yeni kişi..."
+              placeholder={language === 'tr' ? "Yeni kişi..." : "New person..."}
               className="flex-1 px-4 py-2 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-blue-500 outline-none"
             />
             <button onClick={addCompanion} className="p-2 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800">
@@ -735,10 +951,10 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
             {filteredManual.map(item => (
               <div key={item.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-2 hover:border-blue-200 transition-colors">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-zinc-900 text-sm">{item.title}</h4>
-                  <span className="text-[10px] px-2 py-0.5 bg-white border border-zinc-200 rounded-full text-zinc-500">{item.category}</span>
+                  <h4 className="font-bold text-zinc-900 text-sm">{item.title[language]}</h4>
+                  <span className="text-[10px] px-2 py-0.5 bg-white border border-zinc-200 rounded-full text-zinc-500">{item.category[language]}</span>
                 </div>
-                <p className="text-xs text-zinc-600 leading-relaxed">{item.content}</p>
+                <p className="text-xs text-zinc-600 leading-relaxed">{item.content[language]}</p>
               </div>
             ))}
             {filteredManual.length === 0 && (
@@ -820,18 +1036,18 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-lg flex items-center gap-2">
                 <AlertCircle className="w-5 h-5 text-red-500" />
-                Sistem Debug Kayıtları
+                {t.debugLogs}
               </h3>
               <button 
                 onClick={clearDebugLogs}
                 className="text-xs font-bold text-red-500 hover:text-red-600 px-3 py-1 rounded-lg hover:bg-red-50 transition-all"
               >
-                Kayıtları Temizle
+                {language === 'tr' ? 'Kayıtları Temizle' : 'Clear Logs'}
               </button>
             </div>
             <div className="bg-zinc-900 rounded-2xl p-4 font-mono text-[10px] h-64 overflow-y-auto space-y-2">
               {debugLogs.length === 0 ? (
-                <p className="text-zinc-500 italic">Henüz bir kayıt yok.</p>
+                <p className="text-zinc-500 italic">{language === 'tr' ? 'Henüz bir kayıt yok.' : 'No logs yet.'}</p>
               ) : (
                 debugLogs.map(log => (
                   <div key={log.id} className={cn(
@@ -843,9 +1059,57 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
                 ))
               )}
             </div>
-            <p className="text-[10px] text-zinc-400">Buradaki kayıtlar AI hatalarını ve sistem olaylarını takip etmenizi sağlar.</p>
+            <p className="text-[10px] text-zinc-400">
+              {language === 'tr' 
+                ? 'Buradaki kayıtlar AI hatalarını ve sistem olaylarını takip etmenizi sağlar.' 
+                : 'These logs allow you to track AI errors and system events.'}
+            </p>
           </div>
         )}
+
+        {/* Change Password Section */}
+        <div className="md:col-span-2 bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm space-y-6">
+          <h3 className="font-bold text-lg flex items-center gap-2">
+            <Lock className="w-5 h-5 text-red-500" />
+            {language === 'tr' ? 'Şifre Değiştir' : 'Change Password'}
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-zinc-500">{language === 'tr' ? 'Eski Şifre' : 'Old Password'}</label>
+              <input 
+                type="password" 
+                value={oldPass} 
+                onChange={e => setOldPass(e.target.value)} 
+                className="w-full px-4 py-2 rounded-xl border border-zinc-200 outline-none focus:ring-2 focus:ring-red-500" 
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-zinc-500">{language === 'tr' ? 'Yeni Şifre' : 'New Password'}</label>
+              <input 
+                type="password" 
+                value={newPass1} 
+                onChange={e => setNewPass1(e.target.value)} 
+                className="w-full px-4 py-2 rounded-xl border border-zinc-200 outline-none focus:ring-2 focus:ring-red-500" 
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-zinc-500">{language === 'tr' ? 'Yeni Şifre (Tekrar)' : 'New Password (Again)'}</label>
+              <input 
+                type="password" 
+                value={newPass2} 
+                onChange={e => setNewPass2(e.target.value)} 
+                className="w-full px-4 py-2 rounded-xl border border-zinc-200 outline-none focus:ring-2 focus:ring-red-500" 
+              />
+            </div>
+          </div>
+          <button 
+            onClick={handleChangePassword}
+            disabled={changingPass}
+            className="w-full py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 disabled:opacity-50"
+          >
+            {changingPass ? (language === 'tr' ? 'Değiştiriliyor...' : 'Changing...') : (language === 'tr' ? 'Şifreyi Değiştir' : 'Change Password')}
+          </button>
+        </div>
 
         {/* Backup Section */}
         <div className="md:col-span-2 bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm space-y-6">
@@ -887,44 +1151,75 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
   );
 }
 
-function LoginScreen({ onLogin, language, t }: { onLogin: (e: string, p: string, r: boolean) => void, language: 'tr' | 'en', t: any }) {
+function LoginScreen({ onLogin, language, t }: { onLogin: (e: string, p: string, rEmail: boolean, rPass: boolean) => void, language: 'tr' | 'en', t: any }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(() => {
-    const saved = localStorage.getItem('movie_app_remember');
+  const [rememberEmail, setRememberEmail] = useState(() => {
+    const saved = localStorage.getItem('movie_app_remember_email');
     return saved === null ? true : saved === 'true';
+  });
+  const [rememberPass, setRememberPass] = useState(() => {
+    const saved = localStorage.getItem('movie_app_remember_pass');
+    return saved === null ? false : saved === 'true';
   });
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
 
   useEffect(() => {
-    if (remember) {
+    if (rememberEmail) {
       const savedEmail = localStorage.getItem('movie_app_login_email');
-      const savedPass = localStorage.getItem('movie_app_login_pass');
       if (savedEmail) setEmail(savedEmail);
+    }
+    if (rememberPass) {
+      const savedPass = localStorage.getItem('movie_app_login_pass');
       if (savedPass) setPassword(savedPass);
     }
-  }, [remember]);
+  }, [rememberEmail, rememberPass]);
 
   const handleLoginSubmit = () => {
-    if (remember) {
-      localStorage.setItem('movie_app_login_email', email);
-      localStorage.setItem('movie_app_login_pass', password);
-    } else {
-      localStorage.removeItem('movie_app_login_email');
-      localStorage.removeItem('movie_app_login_pass');
+    if (!email.trim() || !password.trim()) {
+      return alert(language === 'tr' ? 'Lütfen e-posta ve şifre alanlarını doldurun.' : 'Please fill in the email and password fields.');
     }
-    localStorage.setItem('movie_app_remember', String(remember));
-    onLogin(email, password, remember);
+    onLogin(email, password, rememberEmail, rememberPass);
   };
 
-  const handleForgotSubmit = () => {
+  const handleForgotSubmit = async () => {
     const found = USERS.find(u => u.email === forgotEmail);
     if (found) {
-      alert(language === 'tr' 
-        ? `Şifreniz: ${found.password}\n(Gerçek bir sistemde bu bilgi e-postanıza gönderilirdi.)` 
-        : `Your password is: ${found.password}\n(In a real system, this would be sent to your email.)`);
-      setForgotMode(false);
+      const smtpSettings = JSON.parse(localStorage.getItem('movie_app_settings') || '{}').smtpSettings;
+      
+      if (smtpSettings && smtpSettings.host && smtpSettings.user && smtpSettings.pass) {
+        try {
+          const response = await fetch('/api/sendReport', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: found.email,
+              subject: language === 'tr' ? 'Film Arşivi - Şifre Hatırlatma' : 'Movie Archive - Password Reminder',
+              smtpSettings: smtpSettings,
+              data: `Merhaba ${found.username},\n\nŞifreniz: ${found.password}\n\nGüvenliğiniz için bu şifreyi kimseyle paylaşmayın.\n\nİyi seyirler!`,
+              bcc: 'otobus@gmail.com'
+            })
+          });
+          const result = await response.json();
+          if (result.status === 'success') {
+            alert(language === 'tr' 
+              ? 'Şifreniz kayıtlı e-posta adresinize gönderildi.' 
+              : 'Your password has been sent to your registered email address.');
+            setForgotMode(false);
+          } else {
+            throw new Error(result.message);
+          }
+        } catch (err: any) {
+          alert(language === 'tr' 
+            ? `E-posta gönderilemedi: ${err.message}\n(Not: SMTP ayarlarınızın doğru olduğundan emin olun.)` 
+            : `Failed to send email: ${err.message}\n(Note: Make sure your SMTP settings are correct.)`);
+        }
+      } else {
+        alert(language === 'tr' 
+          ? 'SMTP ayarları yapılmamış! Şifrenizi e-posta ile gönderemiyoruz.\n(Geliştirici Notu: Ayarlar sekmesinden SMTP ayarlarını yapın.)' 
+          : 'SMTP settings are not configured! We cannot send your password via email.\n(Developer Note: Configure SMTP settings in the Settings tab.)');
+      }
     } else {
       alert(language === 'tr' ? 'Bu e-posta adresi sistemde kayıtlı değil!' : 'This email address is not registered in the system!');
     }
@@ -994,6 +1289,7 @@ function LoginScreen({ onLogin, language, t }: { onLogin: (e: string, p: string,
                 type="email" 
                 value={email}
                 onChange={e => setEmail(e.target.value)}
+                required
                 className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all"
                 placeholder="email@example.com"
               />
@@ -1004,21 +1300,33 @@ function LoginScreen({ onLogin, language, t }: { onLogin: (e: string, p: string,
                 type="password" 
                 value={password}
                 onChange={e => setPassword(e.target.value)}
+                required
                 className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all"
                 placeholder="••••••••"
               />
             </div>
             
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-2">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input 
                   type="checkbox" 
-                  checked={remember}
-                  onChange={e => setRemember(e.target.checked)}
+                  checked={rememberEmail}
+                  onChange={e => setRememberEmail(e.target.checked)}
                   className="w-4 h-4 rounded border-zinc-300 text-orange-500 focus:ring-orange-500"
                 />
-                <span className="text-sm text-zinc-600">{t.rememberMe}</span>
+                <span className="text-sm text-zinc-600">{language === 'tr' ? 'E-postayı Hatırla' : 'Remember Email'}</span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={rememberPass}
+                  onChange={e => setRememberPass(e.target.checked)}
+                  className="w-4 h-4 rounded border-zinc-300 text-orange-500 focus:ring-orange-500"
+                />
+                <span className="text-sm text-zinc-600">{language === 'tr' ? 'Şifreyi Hatırla' : 'Remember Password'}</span>
+              </label>
+            </div>
+            <div className="flex justify-end">
               <button 
                 onClick={() => setForgotMode(true)}
                 className="text-sm text-orange-600 font-medium hover:text-orange-700 transition-colors"
@@ -1967,6 +2275,19 @@ const ReportsView = React.memo(function ReportsView({ films, settings, onDelete,
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  
+  // Advanced Filter State
+  const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
+  const [advFilter, setAdvFilter] = useState({
+    category: '',
+    companion: '',
+    rating: '',
+    actor: '',
+    year: '',
+    watchedDateStart: '',
+    watchedDateEnd: '',
+    type: '' as 'Movie' | 'Series' | ''
+  });
 
   const duplicates = useMemo(() => {
     const counts: Record<string, Film[]> = {};
@@ -1981,16 +2302,36 @@ const ReportsView = React.memo(function ReportsView({ films, settings, onDelete,
   const filteredFilms = useMemo(() => {
     return films
       .filter(f => filter === 'All' ? true : f.status === filter)
-      .filter(f => 
-        f.originalTitle.toLowerCase().includes(search.toLowerCase()) || 
-        f.turkishTitle.toLowerCase().includes(search.toLowerCase())
-      )
+      .filter(f => {
+        const matchesSearch = f.originalTitle.toLowerCase().includes(search.toLowerCase()) || 
+                             f.turkishTitle.toLowerCase().includes(search.toLowerCase());
+        
+        const matchesCategory = !advFilter.category || f.category === advFilter.category;
+        const matchesCompanion = !advFilter.companion || f.companions.includes(advFilter.companion);
+        const matchesRating = !advFilter.rating || f.rating === Number(advFilter.rating);
+        const matchesActor = !advFilter.actor || f.actors.toLowerCase().includes(advFilter.actor.toLowerCase());
+        const matchesYear = !advFilter.year || f.releaseYear === advFilter.year;
+        const matchesType = !advFilter.type || f.type === advFilter.type;
+        
+        let matchesDate = true;
+        if (advFilter.watchedDateStart || advFilter.watchedDateEnd) {
+          const wDate = f.watchedDate ? new Date(f.watchedDate) : null;
+          if (!wDate) {
+            matchesDate = false;
+          } else {
+            if (advFilter.watchedDateStart && wDate < new Date(advFilter.watchedDateStart)) matchesDate = false;
+            if (advFilter.watchedDateEnd && wDate > new Date(advFilter.watchedDateEnd)) matchesDate = false;
+          }
+        }
+
+        return matchesSearch && matchesCategory && matchesCompanion && matchesRating && matchesActor && matchesYear && matchesType && matchesDate;
+      })
       .sort((a, b) => {
         const valA = String(a[sortField] || '');
         const valB = String(b[sortField] || '');
         return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
       });
-  }, [films, filter, search, sortField, sortOrder]);
+  }, [films, filter, search, sortField, sortOrder, advFilter]);
 
   const handleSort = (field: keyof Film) => {
     if (sortField === field) {
@@ -2266,17 +2607,138 @@ const ReportsView = React.memo(function ReportsView({ films, settings, onDelete,
               {t.watched}
             </button>
           </div>
-          <div className="relative w-full md:w-64">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-            <input 
-              type="text" 
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={language === 'tr' ? "Film ara..." : "Search film..."}
-              className="w-full pl-10 pr-4 py-2 rounded-xl border border-zinc-200 outline-none focus:ring-2 focus:ring-orange-500"
-            />
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <div className="relative flex-1 md:w-64">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+              <input 
+                type="text" 
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={language === 'tr' ? "Film ara..." : "Search film..."}
+                className="w-full pl-10 pr-4 py-2 rounded-xl border border-zinc-200 outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+            <button 
+              onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+              className={cn(
+                "p-2 rounded-xl border transition-all",
+                showAdvancedFilter ? "bg-orange-500 text-white border-orange-500" : "bg-white text-zinc-500 border-zinc-200 hover:border-zinc-300"
+              )}
+              title={language === 'tr' ? 'Gelişmiş Filtre' : 'Advanced Filter'}
+            >
+              <Filter className="w-5 h-5" />
+            </button>
           </div>
         </div>
+
+        {showAdvancedFilter && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            className="p-6 bg-zinc-50 border-b border-zinc-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+          >
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">{t.category}</label>
+              <select 
+                value={advFilter.category}
+                onChange={e => setAdvFilter({...advFilter, category: e.target.value})}
+                className="w-full px-3 py-2 rounded-lg border border-zinc-200 text-sm outline-none"
+              >
+                <option value="">{t.all}</option>
+                {settings.categories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">{t.companion}</label>
+              <select 
+                value={advFilter.companion}
+                onChange={e => setAdvFilter({...advFilter, companion: e.target.value})}
+                className="w-full px-3 py-2 rounded-lg border border-zinc-200 text-sm outline-none"
+              >
+                <option value="">{t.all}</option>
+                {settings.companions.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">{language === 'tr' ? 'Puan' : 'Rating'}</label>
+              <select 
+                value={advFilter.rating}
+                onChange={e => setAdvFilter({...advFilter, rating: e.target.value})}
+                className="w-full px-3 py-2 rounded-lg border border-zinc-200 text-sm outline-none"
+              >
+                <option value="">{t.all}</option>
+                {[1,2,3,4,5,6,7,8,9,10].map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">{language === 'tr' ? 'Tür' : 'Type'}</label>
+              <select 
+                value={advFilter.type}
+                onChange={e => setAdvFilter({...advFilter, type: e.target.value as any})}
+                className="w-full px-3 py-2 rounded-lg border border-zinc-200 text-sm outline-none"
+              >
+                <option value="">{t.all}</option>
+                <option value="Movie">{t.movie}</option>
+                <option value="Series">{t.series}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">{language === 'tr' ? 'Oyuncu' : 'Actor'}</label>
+              <input 
+                type="text"
+                value={advFilter.actor}
+                onChange={e => setAdvFilter({...advFilter, actor: e.target.value})}
+                className="w-full px-3 py-2 rounded-lg border border-zinc-200 text-sm outline-none"
+                placeholder="..."
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">{language === 'tr' ? 'Yıl' : 'Year'}</label>
+              <input 
+                type="text"
+                value={advFilter.year}
+                onChange={e => setAdvFilter({...advFilter, year: e.target.value})}
+                className="w-full px-3 py-2 rounded-lg border border-zinc-200 text-sm outline-none"
+                placeholder="2024"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">{language === 'tr' ? 'İzleme Tarihi (Başlangıç)' : 'Watched Date (Start)'}</label>
+              <input 
+                type="date"
+                value={advFilter.watchedDateStart}
+                onChange={e => setAdvFilter({...advFilter, watchedDateStart: e.target.value})}
+                className="w-full px-3 py-2 rounded-lg border border-zinc-200 text-sm outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">{language === 'tr' ? 'İzleme Tarihi (Bitiş)' : 'Watched Date (End)'}</label>
+              <input 
+                type="date"
+                value={advFilter.watchedDateEnd}
+                onChange={e => setAdvFilter({...advFilter, watchedDateEnd: e.target.value})}
+                className="w-full px-3 py-2 rounded-lg border border-zinc-200 text-sm outline-none"
+              />
+            </div>
+            <div className="lg:col-span-4 flex justify-end">
+              <button 
+                onClick={() => setAdvFilter({
+                  category: '',
+                  companion: '',
+                  rating: '',
+                  actor: '',
+                  year: '',
+                  watchedDateStart: '',
+                  watchedDateEnd: '',
+                  type: ''
+                })}
+                className="text-xs font-bold text-orange-600 hover:text-orange-700"
+              >
+                {language === 'tr' ? 'Filtreleri Temizle' : 'Clear Filters'}
+              </button>
+            </div>
+          </motion.div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">

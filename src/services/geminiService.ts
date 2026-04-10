@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -16,8 +16,9 @@ export async function fetchMovieDetails(title: string, userApiKey?: string, retr
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Details for: "${title}". Brief plot (TR), actors (newline sep), category (TR), IMDb, year, trailer. For series: seasons, episodes. TR only.`,
+      contents: `Details for: "${title}". Short plot (TR), actors (newline), category (TR), IMDb, year, trailer. Series: seasons, episodes. TR only.`,
       config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
