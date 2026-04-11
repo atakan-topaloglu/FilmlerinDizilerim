@@ -93,5 +93,6 @@ For GitHub Pages:
 ### 4) Result
 
 - "Send Email Report" sends automatically and includes Excel attachment.
+- You can send to multiple recipients by entering comma-separated emails in "Receiver Email".
 - Password reminder and password-change notifications also send automatically.
 - No mail client popup is required.

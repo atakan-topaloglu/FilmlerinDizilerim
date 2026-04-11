@@ -226,6 +226,12 @@ type RelayAttachment = {
   mimeType: string;
 };
 
+const parseEmailList = (rawValue: string) =>
+  rawValue
+    .split(/[;,]/)
+    .map(email => email.trim())
+    .filter(Boolean);
+
 const sendEmailWithRelay = async ({
   to,
   subject,
@@ -233,7 +239,7 @@ const sendEmailWithRelay = async ({
   fromEmail,
   attachment,
 }: {
-  to: string;
+  to: string | string[];
   subject: string;
   text: string;
   fromEmail?: string;
@@ -961,7 +967,7 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-500">{language === 'tr' ? 'Alıcı E-posta' : 'Receiver Email'}</label>
-                <input type="email" value={smtp.toEmail} onChange={e => setSmtp({...smtp, toEmail: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-zinc-200 outline-none" />
+                <input type="text" value={smtp.toEmail} onChange={e => setSmtp({...smtp, toEmail: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-zinc-200 outline-none" placeholder={language === 'tr' ? 'a@mail.com, b@mail.com' : 'a@mail.com, b@mail.com'} />
               </div>
             </div>
             <button onClick={saveSmtp} className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-all">
@@ -2396,8 +2402,8 @@ const ReportsView = React.memo(function ReportsView({ films, settings, onDelete,
   };
 
   const sendEmailReport = async () => {
-    const recipient = settings.smtpSettings?.toEmail || settings.smtpSettings?.user;
-    if (!recipient) {
+    const recipients = parseEmailList(settings.smtpSettings?.toEmail || settings.smtpSettings?.user || '');
+    if (recipients.length === 0) {
       return alert(language === 'tr'
         ? 'Lütfen önce Ayarlar kısmından alıcı e-posta adresini girin.'
         : 'Please enter a receiver email address in Settings first.');
@@ -2457,7 +2463,7 @@ const ReportsView = React.memo(function ReportsView({ films, settings, onDelete,
         ? `Merhaba,\n\nFilm ve dizi arşivi rapor özeti aşağıdadır.\n\nToplam Kayıt: ${films.length}\nSeyredilen: ${watchedCount}\nGelecek: ${upcomingCount}\n\nJSON Özet:\n${summaryJson}`
         : `Hello,\n\nYour movie and series archive report summary is below.\n\nTotal Records: ${films.length}\nWatched: ${watchedCount}\nUpcoming: ${upcomingCount}\n\nJSON Summary:\n${summaryJson}`;
       await sendEmailWithRelay({
-        to: recipient,
+        to: recipients,
         subject,
         text: body,
         fromEmail: settings.smtpSettings?.fromEmail || user.email,
