@@ -14,6 +14,19 @@ const isOriginAllowed = (origin, allowedOrigin) => {
   return origin === allowedOrigin;
 };
 
+const normalizeRecipients = (toValue) => {
+  if (Array.isArray(toValue)) {
+    return toValue.map((email) => String(email).trim()).filter(Boolean);
+  }
+  if (typeof toValue === "string") {
+    return toValue
+      .split(/[;,]/)
+      .map((email) => email.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
@@ -38,8 +51,9 @@ export default {
     try {
       const payload = await request.json();
       const { to, subject, text, fromEmail, attachment } = payload || {};
+      const recipients = normalizeRecipients(to);
 
-      if (!to || !subject || !text) {
+      if (recipients.length === 0 || !subject || !text) {
         return json({ ok: false, message: "Missing required fields: to, subject, text." }, 400, allowedOrigin || "*");
       }
 
@@ -53,7 +67,7 @@ export default {
           name: "FilmlerinDizilerim",
           email: senderEmail,
         },
-        to: [{ email: to }],
+        to: recipients.map((email) => ({ email })),
         subject,
         textContent: text,
       };
