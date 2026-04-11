@@ -1,0 +1,8 @@
+name = "filmlerin-dizilerim-email-relay"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Set this to your GitHub Pages origin, e.g. https://username.github.io
+ALLOWED_ORIGIN = "https://atakan-topaloglu.github.io/FilmlerinDizilerim"
+FROM_EMAIL = "tahtayusufyahya@gmail.com"
