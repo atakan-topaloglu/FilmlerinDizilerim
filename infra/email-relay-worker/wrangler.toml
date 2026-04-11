@@ -4,5 +4,5 @@ compatibility_date = "2025-01-01"
 
 [vars]
 # Set this to your GitHub Pages origin, e.g. https://username.github.io
-ALLOWED_ORIGIN = "https://atakan-topaloglu.github.io/FilmlerinDizilerim"
+ALLOWED_ORIGIN = "https://atakan-topaloglu.github.io"
 FROM_EMAIL = "tahtayusufyahya@gmail.com"
