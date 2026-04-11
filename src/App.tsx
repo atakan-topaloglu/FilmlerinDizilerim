@@ -218,6 +218,55 @@ const formatDate = (dateStr: string | undefined) => {
   }
 };
 
+const EMAIL_RELAY_URL = (import.meta.env.VITE_EMAIL_RELAY_URL || '').trim();
+
+type RelayAttachment = {
+  filename: string;
+  contentBase64: string;
+  mimeType: string;
+};
+
+const sendEmailWithRelay = async ({
+  to,
+  subject,
+  text,
+  fromEmail,
+  attachment,
+}: {
+  to: string;
+  subject: string;
+  text: string;
+  fromEmail?: string;
+  attachment?: RelayAttachment;
+}) => {
+  if (!EMAIL_RELAY_URL) {
+    throw new Error('VITE_EMAIL_RELAY_URL is not configured.');
+  }
+
+  const response = await fetch(EMAIL_RELAY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to,
+      subject,
+      text,
+      fromEmail,
+      attachment,
+    }),
+  });
+
+  let result: any = {};
+  try {
+    result = await response.json();
+  } catch {
+    // Ignore parse errors and use a generic fallback.
+  }
+
+  if (!response.ok || result?.ok === false) {
+    throw new Error(result?.message || `Relay request failed (${response.status})`);
+  }
+};
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [language, setLanguage] = useState<'tr' | 'en'>('tr');
@@ -679,37 +728,25 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
 
     setChangingPass(true);
     try {
-      const smtpSettings = settings.smtpSettings;
-      if (smtpSettings && smtpSettings.host && smtpSettings.user && smtpSettings.pass) {
-        const response = await fetch('/api/sendReport', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: user.email,
-            subject: language === 'tr' ? 'Film Arşivi - Şifre Değişikliği' : 'Movie Archive - Password Change',
-            smtpSettings: smtpSettings,
-            data: `Merhaba ${user.username},\n\nŞifreniz başarıyla değiştirildi.\n\nYeni Şifreniz: ${newPass1}\n\nİyi seyirler!`,
-            bcc: 'otobus@gmail.com'
-          })
-        });
-        const result = await response.json();
-        if (result.status === 'success') {
-          // In a real app, we would update the USERS array or a database here.
-          // For now, we just notify the user.
-          alert(language === 'tr' 
-            ? 'Şifreniz başarıyla değiştirildi ve e-posta ile gönderildi.' 
-            : 'Your password has been successfully changed and sent via email.');
-          setOldPass('');
-          setNewPass1('');
-          setNewPass2('');
-        } else {
-          throw new Error(result.message);
-        }
-      } else {
-        alert(language === 'tr' 
-          ? 'Şifre değiştirildi ancak SMTP ayarları eksik olduğu için e-posta gönderilemedi.' 
-          : 'Password changed but email could not be sent because SMTP settings are missing.');
-      }
+      const recipient = settings.smtpSettings?.toEmail || user.email;
+      const subject = language === 'tr' ? 'Film Arşivi - Şifre Değişikliği' : 'Movie Archive - Password Change';
+      const body = language === 'tr'
+        ? `Merhaba ${user.username},\n\nŞifreniz başarıyla değiştirildi.\n\nYeni Şifreniz: ${newPass1}\n\nBu bildirim Brevo relay ile otomatik gönderildi.\n\nİyi seyirler!`
+        : `Hello ${user.username},\n\nYour password has been changed successfully.\n\nYour new password: ${newPass1}\n\nThis notification was sent automatically through the Brevo relay.\n\nEnjoy watching!`;
+
+      await sendEmailWithRelay({
+        to: recipient,
+        subject,
+        text: body,
+        fromEmail: settings.smtpSettings?.fromEmail || user.email,
+      });
+      alert(language === 'tr'
+        ? 'Şifreniz değiştirildi ve e-posta otomatik olarak gönderildi.'
+        : 'Your password has been changed and the email was sent automatically.');
+
+      setOldPass('');
+      setNewPass1('');
+      setNewPass2('');
     } catch (err: any) {
       alert(language === 'tr' ? `Hata: ${err.message}` : `Error: ${err.message}`);
     } finally {
@@ -896,6 +933,11 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
               <Mail className="w-5 h-5 text-purple-500" />
               {t.smtpSettings}
             </h3>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+              {language === 'tr'
+                ? 'Statik sürümde doğrudan SMTP devre dışıdır. Otomatik e-posta için VITE_EMAIL_RELAY_URL ile Brevo relay yapılandırması gereklidir.'
+                : 'Direct SMTP is disabled in the static version. Automatic sending requires a Brevo relay configured via VITE_EMAIL_RELAY_URL.'}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-500">SMTP Host</label>
@@ -1186,39 +1228,23 @@ function LoginScreen({ onLogin, language, t }: { onLogin: (e: string, p: string,
   const handleForgotSubmit = async () => {
     const found = USERS.find(u => u.email === forgotEmail);
     if (found) {
-      const smtpSettings = JSON.parse(localStorage.getItem('movie_app_settings') || '{}').smtpSettings;
-      
-      if (smtpSettings && smtpSettings.host && smtpSettings.user && smtpSettings.pass) {
-        try {
-          const response = await fetch('/api/sendReport', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: found.email,
-              subject: language === 'tr' ? 'Film Arşivi - Şifre Hatırlatma' : 'Movie Archive - Password Reminder',
-              smtpSettings: smtpSettings,
-              data: `Merhaba ${found.username},\n\nŞifreniz: ${found.password}\n\nGüvenliğiniz için bu şifreyi kimseyle paylaşmayın.\n\nİyi seyirler!`,
-              bcc: 'otobus@gmail.com'
-            })
-          });
-          const result = await response.json();
-          if (result.status === 'success') {
-            alert(language === 'tr' 
-              ? 'Şifreniz kayıtlı e-posta adresinize gönderildi.' 
-              : 'Your password has been sent to your registered email address.');
-            setForgotMode(false);
-          } else {
-            throw new Error(result.message);
-          }
-        } catch (err: any) {
-          alert(language === 'tr' 
-            ? `E-posta gönderilemedi: ${err.message}\n(Not: SMTP ayarlarınızın doğru olduğundan emin olun.)` 
-            : `Failed to send email: ${err.message}\n(Note: Make sure your SMTP settings are correct.)`);
-        }
-      } else {
-        alert(language === 'tr' 
-          ? 'SMTP ayarları yapılmamış! Şifrenizi e-posta ile gönderemiyoruz.\n(Geliştirici Notu: Ayarlar sekmesinden SMTP ayarlarını yapın.)' 
-          : 'SMTP settings are not configured! We cannot send your password via email.\n(Developer Note: Configure SMTP settings in the Settings tab.)');
+      try {
+        const subject = language === 'tr' ? 'Film Arşivi - Şifre Hatırlatma' : 'Movie Archive - Password Reminder';
+        const body = language === 'tr'
+          ? `Merhaba ${found.username},\n\nŞifreniz: ${found.password}\n\nBu mesaj Brevo relay ile otomatik gönderildi.\n\nGüvenliğiniz için bu şifreyi kimseyle paylaşmayın.`
+          : `Hello ${found.username},\n\nYour password: ${found.password}\n\nThis message was sent automatically through the Brevo relay.\n\nFor your security, do not share this password with anyone.`;
+        await sendEmailWithRelay({
+          to: found.email,
+          subject,
+          text: body,
+          fromEmail: found.email,
+        });
+        alert(language === 'tr'
+          ? 'Şifre hatırlatma e-postası otomatik olarak gönderildi.'
+          : 'Password reminder email was sent automatically.');
+        setForgotMode(false);
+      } catch (err: any) {
+        alert(language === 'tr' ? `E-posta gönderilemedi: ${err.message}` : `Email could not be sent: ${err.message}`);
       }
     } else {
       alert(language === 'tr' ? 'Bu e-posta adresi sistemde kayıtlı değil!' : 'This email address is not registered in the system!');
@@ -2263,6 +2289,7 @@ Film/Dizi Adı: "${searchTitle}"`;
 
 const ReportsView = React.memo(function ReportsView({ films, settings, onDelete, onBulkDelete, onUpdate, onEdit, initialFilter, user, t, language }: { films: Film[], settings: AppSettings, onDelete: (id: string) => void, onBulkDelete: (ids: string[]) => void, onUpdate: (f: Film) => void, onEdit: (f: Film) => void, initialFilter?: FilmStatus, user: User, t: any, language: 'tr' | 'en' }) {
   const [filter, setFilter] = useState<FilmStatus | 'All'>(initialFilter || 'Upcoming');
+  const [isSendingReport, setIsSendingReport] = useState(false);
   
   useEffect(() => {
     if (initialFilter) {
@@ -2369,13 +2396,39 @@ const ReportsView = React.memo(function ReportsView({ films, settings, onDelete,
   };
 
   const sendEmailReport = async () => {
-    if (!settings.smtpSettings || !settings.smtpSettings.user) {
-      return alert('Lütfen önce Ayarlar kısmından SMTP (E-posta) ayarlarınızı yapın.');
+    const recipient = settings.smtpSettings?.toEmail || settings.smtpSettings?.user;
+    if (!recipient) {
+      return alert(language === 'tr'
+        ? 'Lütfen önce Ayarlar kısmından alıcı e-posta adresini girin.'
+        : 'Please enter a receiver email address in Settings first.');
     }
 
     try {
-      // Generate Excel data for ALL films
-      const data = films.map(f => ({
+      setIsSendingReport(true);
+      const today = new Date().toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US');
+      const subject = language === 'tr' ? `Film ve Dizilerim full yedek (${today})` : `My Movies and Series full backup (${today})`;
+      const watchedCount = films.filter(f => f.status === 'Watched').length;
+      const upcomingCount = films.filter(f => f.status === 'Upcoming').length;
+      const previewItems = films.slice(0, 10).map(f => ({
+        originalTitle: f.originalTitle,
+        turkishTitle: f.turkishTitle,
+        type: f.type,
+        status: f.status,
+        imdbRating: f.imdbRating || '',
+        rating: f.rating || ''
+      }));
+      const summaryJson = JSON.stringify(
+        {
+          generatedAt: new Date().toISOString(),
+          totalItems: films.length,
+          watchedCount,
+          upcomingCount,
+          preview: previewItems
+        },
+        null,
+        2
+      );
+      const excelData = films.map(f => ({
         'Orijinal Ad': f.originalTitle,
         'Türkçe Ad': f.turkishTitle,
         'Tür': f.type === 'Movie' ? 'Film' : 'Dizi',
@@ -2395,34 +2448,32 @@ const ReportsView = React.memo(function ReportsView({ films, settings, onDelete,
         'Toplam Bölüm': f.totalEpisodes || '',
         'Bölüm İzleme Tarihleri': f.episodeWatchedDates?.map(e => `S${e.seasonNumber}E${e.episodeNumber}: ${formatDate(e.date)}`).join(' | ') || ''
       }));
-
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, language === 'tr' ? 'Tüm Arşiv' : 'All Archive');
-      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
-
-      const today = new Date().toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US');
-      const subject = language === 'tr' ? `Film ve Dizilerim full yedek (${today})` : `My Movies and Series full backup (${today})`;
-
-      const response = await fetch('/api/sendReport', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email: settings.smtpSettings.toEmail, 
-          data: films,
-          smtpSettings: settings.smtpSettings,
-          subject: subject,
-          bcc: 'otobus@gmail.com',
-          attachment: {
-            filename: `Film_Arsivi_Full_Yedek_${today.replace(/\./g, '_')}.xlsx`,
-            content: excelBuffer
-          }
-        })
+      const reportSheet = XLSX.utils.json_to_sheet(excelData);
+      const reportBook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(reportBook, reportSheet, language === 'tr' ? 'Tüm Arşiv' : 'All Archive');
+      const excelBase64 = XLSX.write(reportBook, { bookType: 'xlsx', type: 'base64' });
+      const attachmentName = `Film_Arsivi_Full_Yedek_${today.replace(/\./g, '_').replace(/\//g, '_')}.xlsx`;
+      const body = language === 'tr'
+        ? `Merhaba,\n\nFilm ve dizi arşivi rapor özeti aşağıdadır.\n\nToplam Kayıt: ${films.length}\nSeyredilen: ${watchedCount}\nGelecek: ${upcomingCount}\n\nJSON Özet:\n${summaryJson}`
+        : `Hello,\n\nYour movie and series archive report summary is below.\n\nTotal Records: ${films.length}\nWatched: ${watchedCount}\nUpcoming: ${upcomingCount}\n\nJSON Summary:\n${summaryJson}`;
+      await sendEmailWithRelay({
+        to: recipient,
+        subject,
+        text: body,
+        fromEmail: settings.smtpSettings?.fromEmail || user.email,
+        attachment: {
+          filename: attachmentName,
+          contentBase64: excelBase64,
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        },
       });
-      const result = await response.json();
-      alert(result.message);
+      alert(language === 'tr'
+        ? 'Rapor ve Excel eki otomatik olarak gönderildi.'
+        : 'Report and Excel attachment were sent automatically.');
     } catch (err: any) {
       alert((language === 'tr' ? 'E-posta gönderilemedi: ' : 'Email could not be sent: ') + err.message);
+    } finally {
+      setIsSendingReport(false);
     }
   };
 
@@ -2484,10 +2535,13 @@ const ReportsView = React.memo(function ReportsView({ films, settings, onDelete,
           </button>
           <button 
             onClick={sendEmailReport}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20"
+            disabled={isSendingReport}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-60"
           >
             <Mail className="w-4 h-4" />
-            {t.sendEmail}
+            {isSendingReport
+              ? (language === 'tr' ? 'Gönderiliyor...' : 'Sending...')
+              : t.sendEmail}
           </button>
         </div>
       </header>
