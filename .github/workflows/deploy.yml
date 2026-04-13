@@ -34,6 +34,7 @@ jobs:
         run: npm run build
         env:
           VITE_EMAIL_RELAY_URL: ${{ secrets.VITE_EMAIL_RELAY_URL }}
+          VITE_TMDB_API_KEY: ${{ secrets.VITE_TMDB_API_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

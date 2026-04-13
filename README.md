@@ -40,8 +40,9 @@ This repository includes a GitHub Actions workflow at `.github/workflows/deploy.
 
 1. Push your changes to the `main` branch.
 2. In GitHub repository settings, ensure **Pages** source is set to **GitHub Actions**.
-3. Add repository secret:
+3. Add repository secrets:
    - `VITE_EMAIL_RELAY_URL` = your Cloudflare Worker URL
+   - `VITE_TMDB_API_KEY` = your TMDB API v3 key (used by "Show poster")
 4. Wait for the workflow run to finish.
 5. Your app will be published to the GitHub Pages URL for the repository.
 
