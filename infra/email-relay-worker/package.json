@@ -1,0 +1,13 @@
+{
+  "name": "filmlerin-dizilerim-email-relay",
+  "private": true,
+  "description": "Cloudflare Worker: Brevo API ile e-posta relay (VITE_EMAIL_RELAY_URL)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.54.0"
+  }
+}

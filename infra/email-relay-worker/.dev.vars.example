@@ -1,0 +1,3 @@
+# Kopyalayın: .dev.vars (bu dosya git'e eklenmez)
+# Sadece `npm run dev` / `wrangler dev` yerel çalıştırırken kullanılır.
+BREVO_API_KEY=xkeysib-buraya-brevo-anahtari

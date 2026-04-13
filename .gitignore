@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+# Cloudflare Wrangler local secrets
+.dev.vars
+**/.dev.vars

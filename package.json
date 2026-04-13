@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "relay:dev": "npm run dev --prefix infra/email-relay-worker",
+    "relay:deploy": "npm run deploy --prefix infra/email-relay-worker",
+    "relay:tail": "npm run tail --prefix infra/email-relay-worker"
   },
   "dependencies": {
     "@google/genai": "^1.49.0",

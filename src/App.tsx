@@ -40,13 +40,17 @@ import {
   CloudLightning,
   Droplets,
   Thermometer,
-  Copy
+  Copy,
+  Loader2,
+  Image as ImageIcon,
+  Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 import { cn } from './lib/utils';
 import { Film, FilmStatus, User, AppSettings, EpisodeWatchedDate } from './types';
 import { fetchMovieDetails } from './services/geminiService';
+import { fetchTmdbPosterPath, tmdbPosterUrl } from './services/tmdbService';
 import { DUMMY_DATA } from './dummyData';
 import { USER_MANUAL, ManualItem } from './manualData';
 
@@ -129,7 +133,15 @@ const TRANSLATIONS = {
     debugLogs: "Sistem Hata/Bilgi Günlükleri",
     backup: "Veritabanı Yedeği",
     loadDummy: "Örnek Veri Yükle",
-    deleteData: "Tüm Verileri Sil"
+    deleteData: "Tüm Verileri Sil",
+    showPoster: "Afiş göster",
+    hidePoster: "Afişi gizle",
+    posterLoading: "Afiş yükleniyor...",
+    posterNotFound: "Bu kayıt için TMDB'de afiş bulunamadı.",
+    posterOffline: "Afişler için internet bağlantısı gerekir.",
+    posterNoApiKey: "Afişler için .env dosyasına VITE_TMDB_API_KEY ekleyin.",
+    posterFetchError: "TMDB isteği başarısız.",
+    tmdbAttribution: "Bu ürün TMDB API kullanır; TMDB tarafından onaylanmaz veya sertifikalandırılmaz."
   },
   en: {
     dashboard: "Dashboard",
@@ -197,7 +209,15 @@ const TRANSLATIONS = {
     debugLogs: "System Error/Info Logs",
     backup: "Database Backup",
     loadDummy: "Load Sample Data",
-    deleteData: "Delete All Data"
+    deleteData: "Delete All Data",
+    showPoster: "Show poster",
+    hidePoster: "Hide poster",
+    posterLoading: "Loading poster...",
+    posterNotFound: "No poster found on TMDB for this entry.",
+    posterOffline: "An internet connection is required to load posters.",
+    posterNoApiKey: "Add VITE_TMDB_API_KEY to your .env file for posters.",
+    posterFetchError: "TMDB request failed.",
+    tmdbAttribution: "This product uses the TMDB API but is not endorsed or certified by TMDB."
   }
 };
 
@@ -249,17 +269,28 @@ const sendEmailWithRelay = async ({
     throw new Error('VITE_EMAIL_RELAY_URL is not configured.');
   }
 
-  const response = await fetch(EMAIL_RELAY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      to,
-      subject,
-      text,
-      fromEmail,
-      attachment,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(EMAIL_RELAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to,
+        subject,
+        text,
+        fromEmail,
+        attachment,
+      }),
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+      throw new Error(
+        'Ağ hatası (Failed to fetch): Worker’a erişilemiyor veya tarayıcı CORS ile engelliyor. Yerelde test ediyorsanız Cloudflare Worker’da ALLOWED_ORIGIN listesine tam olarak http://localhost:5173 (veya kullandığınız port) ekleyip wrangler deploy edin. Canlı sitede sayfanızın tam kökeni (origin) de bu listede olmalıdır. VITE_EMAIL_RELAY_URL doğru mu kontrol edin.'
+      );
+    }
+    throw e instanceof Error ? e : new Error(String(e));
+  }
 
   let result: any = {};
   try {
@@ -269,7 +300,13 @@ const sendEmailWithRelay = async ({
   }
 
   if (!response.ok || result?.ok === false) {
-    throw new Error(result?.message || `Relay request failed (${response.status})`);
+    const detail =
+      (typeof result?.details === 'string' && result.details) ||
+      result?.details?.message ||
+      result?.details?.code ||
+      '';
+    const baseMessage = result?.message || `Relay request failed (${response.status})`;
+    throw new Error(detail ? `${baseMessage} | ${detail}` : baseMessage);
   }
 };
 
@@ -939,10 +976,17 @@ function SettingsView({ settings, onUpdate, user, films, t, language, addDebugLo
               <Mail className="w-5 h-5 text-purple-500" />
               {t.smtpSettings}
             </h3>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-              {language === 'tr'
-                ? 'Statik sürümde doğrudan SMTP devre dışıdır. Otomatik e-posta için VITE_EMAIL_RELAY_URL ile Brevo relay yapılandırması gereklidir.'
-                : 'Direct SMTP is disabled in the static version. Automatic sending requires a Brevo relay configured via VITE_EMAIL_RELAY_URL.'}
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 space-y-2">
+              <p>
+                {language === 'tr'
+                  ? 'Otomatik gönderim tarayıcıdan doğrudan Gmail SMTP ile yapılmaz; istek Cloudflare Worker’a gider ve Brevo API ile e-posta iletilir. Aşağıdaki Gmail alanları arşiv/tercih içindir, Worker şifreyi kullanmaz.'
+                  : 'Sending does not use Gmail SMTP from the browser; requests go to your Cloudflare Worker, which sends mail via the Brevo API. The Gmail fields below are not used by the worker.'}
+              </p>
+              <p>
+                {language === 'tr'
+                  ? 'Gönderen (from) adresi Brevo panelinde doğrulanmış bir gönderici olmalıdır. Yerelde "Failed to fetch" alırsanız Worker ALLOWED_ORIGIN içine tam olarak http://localhost:5173 ekleyin ve wrangler deploy yapın.'
+                  : 'The sender (from) address must be a verified sender in Brevo. If you see "Failed to fetch" locally, add http://localhost:5173 to the Worker ALLOWED_ORIGIN list and redeploy.'}
+              </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
@@ -2308,7 +2352,8 @@ const ReportsView = React.memo(function ReportsView({ films, settings, onDelete,
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  
+  const [detailFilm, setDetailFilm] = useState<Film | null>(null);
+
   // Advanced Filter State
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
   const [advFilter, setAdvFilter] = useState({
@@ -2886,6 +2931,14 @@ const ReportsView = React.memo(function ReportsView({ films, settings, onDelete,
                   )}
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={() => setDetailFilm(f)}
+                        className="p-2 text-zinc-400 hover:text-blue-600 transition-colors"
+                        title={t.details}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
                       <button onClick={() => onEdit(f)} className="p-2 text-zinc-400 hover:text-orange-500 transition-colors" title={t.edit}>
                         <Edit3 className="w-4 h-4" />
                       </button>
@@ -2913,6 +2966,41 @@ const ReportsView = React.memo(function ReportsView({ films, settings, onDelete,
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {detailFilm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="p-4 border-b border-zinc-100 flex items-center justify-between shrink-0">
+                <h3 className="font-bold text-zinc-900">{t.details}</h3>
+                <button
+                  type="button"
+                  onClick={() => setDetailFilm(null)}
+                  className="p-2 hover:bg-zinc-100 rounded-full transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <FilmDetailView
+                  film={detailFilm}
+                  onEdit={(f) => {
+                    onEdit(f);
+                    setDetailFilm(null);
+                  }}
+                  t={t}
+                  language={language}
+                />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 });
@@ -2933,6 +3021,45 @@ function SortHeader({ label, field, current, order, onSort }: { label: string, f
 }
 
 function FilmDetailView({ film, onEdit, t, language }: { film: Film, onEdit: (f: Film) => void, t: any, language: 'tr' | 'en' }) {
+  const [posterUrl, setPosterUrl] = useState<string | null>(null);
+  const [posterLoading, setPosterLoading] = useState(false);
+  const [posterError, setPosterError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPosterUrl(null);
+    setPosterError(null);
+    setPosterLoading(false);
+  }, [film.id]);
+
+  const handlePosterAction = async () => {
+    if (posterUrl) {
+      setPosterUrl(null);
+      setPosterError(null);
+      return;
+    }
+    const apiKey = (import.meta.env.VITE_TMDB_API_KEY || '').trim();
+    if (!apiKey) {
+      setPosterError(t.posterNoApiKey);
+      return;
+    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setPosterError(t.posterOffline);
+      return;
+    }
+    setPosterLoading(true);
+    setPosterError(null);
+    try {
+      const path = await fetchTmdbPosterPath(film, apiKey);
+      const url = tmdbPosterUrl(path);
+      if (!url) setPosterError(t.posterNotFound);
+      else setPosterUrl(url);
+    } catch {
+      setPosterError(t.posterFetchError);
+    } finally {
+      setPosterLoading(false);
+    }
+  };
+
   return (
     <div className="p-8 space-y-8">
       <div className="flex flex-col md:flex-row justify-between gap-6">
@@ -2999,6 +3126,41 @@ function FilmDetailView({ film, onEdit, t, language }: { film: Film, onEdit: (f:
         </div>
 
         <div className="space-y-6">
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={handlePosterAction}
+              disabled={posterLoading}
+              className="flex items-center justify-center gap-2 w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-all disabled:opacity-60"
+            >
+              {posterLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  {t.posterLoading}
+                </>
+              ) : posterUrl ? (
+                <>
+                  <ImageIcon className="w-4 h-4 shrink-0" />
+                  {t.hidePoster}
+                </>
+              ) : (
+                <>
+                  <ImageIcon className="w-4 h-4 shrink-0" />
+                  {t.showPoster}
+                </>
+              )}
+            </button>
+            {posterError && <p className="text-xs text-red-600 px-1">{posterError}</p>}
+            {posterUrl && (
+              <div className="space-y-2">
+                <div className="rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-100 shadow-inner">
+                  <img src={posterUrl} alt="" className="w-full h-auto object-cover block" decoding="async" />
+                </div>
+                <p className="text-[10px] text-zinc-400 leading-snug px-1">{t.tmdbAttribution}</p>
+              </div>
+            )}
+          </div>
+
           <div className="p-6 bg-zinc-50 rounded-2xl space-y-4">
             <div className="space-y-1">
               <p className="text-[10px] font-bold text-zinc-400 uppercase">{t.category}</p>

@@ -3,6 +3,7 @@ main = "src/index.js"
 compatibility_date = "2025-01-01"
 
 [vars]
-# Set this to your GitHub Pages origin, e.g. https://username.github.io
-ALLOWED_ORIGIN = "https://atakan-topaloglu.github.io"
+# Comma-separated list. Must include every site origin that calls this worker (exact string the browser sends).
+# Add local Vite dev: http://localhost:5173 and/or http://127.0.0.1:5173 — otherwise the browser shows "Failed to fetch".
+ALLOWED_ORIGIN = "https://atakan-topaloglu.github.io,http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173"
 FROM_EMAIL = "tahtayusufyahya@gmail.com"

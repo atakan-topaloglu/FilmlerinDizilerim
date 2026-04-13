@@ -67,20 +67,18 @@ Worker source is included in:
 
 Commands:
 
-1. Install Wrangler (if needed):  
-   `npm i -g wrangler`
+1. Go to worker folder and install Wrangler (projeye gömülü):  
+   `cd infra/email-relay-worker` then `npm install`
 2. Login to Cloudflare:  
-   `wrangler login`
-3. Go to worker folder:  
-   `cd infra/email-relay-worker`
-4. Update `wrangler.toml` values:
-   - `ALLOWED_ORIGIN` -> your GitHub Pages origin (for example `https://username.github.io`)
+   `npx wrangler login`
+3. Update `wrangler.toml` values:
+   - `ALLOWED_ORIGIN` -> comma-separated origins (GitHub Pages + `http://localhost:5173` for local Vite)
    - `FROM_EMAIL` -> your verified Brevo sender email
-5. Set Brevo API key secret:
-   `wrangler secret put BREVO_API_KEY`
-6. Deploy:
-   `wrangler deploy`
-7. Copy Worker URL (example: `https://filmlerin-dizilerim-email-relay.<subdomain>.workers.dev`)
+4. Set Brevo API key secret:
+   `npx wrangler secret put BREVO_API_KEY`
+5. Deploy:
+   `npm run deploy` (in `infra/email-relay-worker`) or from repo root `npm run relay:deploy`
+6. Copy Worker URL (example: `https://filmlerin-dizilerim-email-relay.<subdomain>.workers.dev`)
 
 ### 3) Connect static app to relay
 
